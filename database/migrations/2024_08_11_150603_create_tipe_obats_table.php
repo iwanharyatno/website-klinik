@@ -11,9 +11,12 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::create('admins', function (Blueprint $table) {
-            $table->id();
+        Schema::create('tipe_obats', function (Blueprint $table) {
+            $table->id('kode');
+            $table->string('nama');
+            $table->text('keterangan')->nullable();
             $table->timestamps();
+            $table->softDeletes();
         });
     }
 
@@ -22,6 +25,6 @@ return new class extends Migration
      */
     public function down(): void
     {
-        Schema::dropIfExists('admins');
+        Schema::dropIfExists('tipe_obats');
     }
 };

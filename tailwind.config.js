@@ -10,9 +10,10 @@ export default {
         primary: {
           DEFAULT: '#6482AD',
           light: '#7FA1C3',
-          dark: '#284061'
+          dark: '#466591'
         },
         cream: {
+          dark: '#d0c0c0',
           DEFAULT: '#E2DAD6',
           light: '#F5EDED'
         },
@@ -31,9 +32,6 @@ export default {
       fontFamily: {
         poppins: ['Poppins', 'Arial', 'sans-serif'],
         roboto: ['Roboto', 'Arial', 'sans-serif']
-      },
-      backgroundImage: {
-        banner: "url('/images/banner.jpg')"
       }
     },
   },

@@ -11,12 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::create('suppliers', function (Blueprint $table) {
-            $table->id('kode');
-            $table->string('nama');
-            $table->string('email');
-            $table->string('telepon');
-            $table->text('alamat');
+        Schema::create('pembelian_obats', function (Blueprint $table) {
+            $table->id('no_transaksi');
+            $table->date('tanggal');
+            $table->foreignId('supplier')->constrained('suppliers', 'kode');
             $table->timestamps();
             $table->softDeletes();
         });
@@ -27,6 +25,6 @@ return new class extends Migration
      */
     public function down(): void
     {
-        Schema::dropIfExists('suppliers');
+        Schema::dropIfExists('pembelian_obats');
     }
 };
