@@ -22,11 +22,12 @@ return new class extends Migration
             $table->string('tempat_tgl_lahir')->nullable();
             $table->integer('umur')->nullable();
             $table->string('pekerjaan')->nullable();
-            $table->text('alamat')->nullable();
-            $table->string('kota')->nullable();
             $table->string('propinsi')->nullable();
+            $table->string('kabupaten')->nullable();
+            $table->string('kecamatan')->nullable();
+            $table->string('kelurahan')->nullable();
             $table->string('kode_pos')->nullable();
-            $table->string('negara')->nullable();
+            $table->text('alamat')->nullable();
             $table->timestamps();
             $table->softDeletes();
         });

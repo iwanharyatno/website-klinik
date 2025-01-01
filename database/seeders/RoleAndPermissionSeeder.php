@@ -25,13 +25,15 @@ class RoleAndPermissionSeeder extends Seeder
         }
 
         Role::create(['name' => 'Owner']);
-        Role::create(['name' => 'Doctor']);
-        $assistant = Role::create(['name' => 'Assistant']);
+        $doctor = Role::create(['name' => 'Doctor']);
+        $doctor->givePermissionTo(collect($this->operations)->map(fn ($item, $key) => $item . ' pasien'));
+        $doctor->givePermissionTo(['create rekam_medis', 'update rekam_medis', 'read rekam_medis']);
 
+        $assistant = Role::create(['name' => 'Assistant']);
         $assistant->givePermissionTo(collect($this->operations)->map(fn ($item, $key) => $item . ' pasien'));
         $assistant->givePermissionTo(['create rekam_medis', 'update rekam_medis', 'read rekam_medis']);
 
         $pharmacist = Role::create(['name' => 'Pharmacist']);
-        $pharmacist->givePermissionTo(['read resep_obat', 'read pasien', 'read obat', 'update resep_obat']);
+        $pharmacist->givePermissionTo(['read resep_obat', 'read pasien', 'read obat', 'update resep_obat', 'read rekam_medis']);
     }
 }

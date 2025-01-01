@@ -19,4 +19,8 @@ class RekamMedis extends Model
     public function pasien() {
         return $this->belongsTo(Pasien::class, 'no_pasien', 'no_pasien');
     }
+
+    public function resepObat() {
+        return $this->hasOne(ResepObat::class, 'kode_rekam_medis', 'kode');
+    }
 }

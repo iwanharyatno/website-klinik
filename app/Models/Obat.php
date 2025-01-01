@@ -11,4 +11,18 @@ class Obat extends Model
     use HasFactory, SoftDeletes;
 
     protected $primaryKey = 'kode';
+
+    protected $guarded = [
+        'id',
+        'created_at',
+        'updated_at'
+    ];
+
+    public function tipeObat() {
+        return $this->belongsTo(TipeObat::class, 'kode_tipe', 'kode');
+    }
+
+    public function satuanObat() {
+        return $this->belongsTo(SatuanObat::class, 'satuan', 'kode');
+    }
 }

@@ -11,4 +11,10 @@ class SatuanObat extends Model
     use HasFactory, SoftDeletes;
 
     protected $primaryKey = 'kode';
+
+    protected $guarded = [
+        'id',
+        'created_at',
+        'updated_at'
+    ];
 }

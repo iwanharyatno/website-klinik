@@ -21,7 +21,24 @@ class RekamMedisPasienController extends Controller
             return CommonResponse::forbidden();
         }
         $pasien = Pasien::find($pasienId);
-        $rekamMedisList = $pasien->rekamMedis()->orderBy('created_at', 'desc')->get();
+        $rekamMedisList = $pasien->rekamMedis()->with('pasien')->orderBy('created_at', 'desc')->get();
+
+        if (request('limit') != null) {
+            $rekamMedisList = $pasien->rekamMedis()->with('pasien')->orderBy('created_at', 'desc')->take(request('limit'))->get();
+        }
+
+        return CommonResponse::ok($rekamMedisList->toArray());
+    }
+
+    /**
+     * Display a listing for all of the rekam_medis
+     */
+    public function indexAll(Request $request)
+    {
+        if (!$request->user()->can('read rekam_medis')) {
+            return CommonResponse::forbidden();
+        }
+        $rekamMedisList = RekamMedis::with('pasien')->orderBy('created_at', 'desc')->get();
 
         return CommonResponse::ok($rekamMedisList->toArray());
     }
@@ -51,7 +68,23 @@ class RekamMedisPasienController extends Controller
         }
 
         $pasien = Pasien::find($pasienId);
-        $rekamMedis = $pasien->rekamMedis()->where('kode', $id)->first();
+        $rekamMedis = $pasien->rekamMedis()->with('pasien')->where('kode', $id)->first();
+
+        if ($rekamMedis == null) {
+            return CommonResponse::notFound();
+        }
+
+        return CommonResponse::ok($rekamMedis->toArray());
+    }
+
+    
+    public function showIndependent(Request $request, string $id)
+    {
+        if (!$request->user()->can('read rekam_medis')) {
+            return CommonResponse::forbidden();
+        }
+
+        $rekamMedis = RekamMedis::with('pasien', 'resepObat', 'resepObat.detailResepObats', 'resepObat.detailResepObats.obat')->where('kode', $id)->first();
 
         if ($rekamMedis == null) {
             return CommonResponse::notFound();

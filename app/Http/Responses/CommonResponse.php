@@ -7,11 +7,11 @@ use Illuminate\Contracts\Support\Responsable;
 class CommonResponse implements Responsable
 {
     protected int $httpCode;
-    protected array $data;
+    protected string | array | object $data;
     protected string $errorMessage;
     protected array $errors;
 
-    public function __construct(int $httpCode, array $data = [], string $errorMessage = '', array $errors = [])
+    public function __construct(int $httpCode, string | array | object $data = [], string $errorMessage = '', array $errors = [])
     {
         if (! (($httpCode >= 200 && $httpCode <= 300) || ($httpCode >= 400 && $httpCode <= 600))) {
           throw new \RuntimeException($httpCode . ' is not valid');
@@ -45,7 +45,7 @@ class CommonResponse implements Responsable
         );
     }
 
-    public static function ok(array $data)
+    public static function ok(array | string | object $data)
     {
         return new static(200, $data);
     }
@@ -68,5 +68,10 @@ class CommonResponse implements Responsable
     public static function unprocessableEntity(array $errors = [], string $errorMessage = "Incorrect payload format")
     {
         return new static(422, errorMessage: $errorMessage, errors: $errors);
+    }
+
+    public static function badRequest(array $errors = [], string $errorMessage = "Incorrect payload format")
+    {
+        return new static(400, errorMessage: $errorMessage, errors: $errors);
     }
 }
