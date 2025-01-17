@@ -13,7 +13,7 @@ class UserSeeder extends Seeder
      */
     public function run(): void
     {
-        $owner = User::create([
+    $owner = User::create([
             'nama' => 'Lorem Ipsum',
             'username' => 'lorem',
             'email' => 'lorem@lorem.com',

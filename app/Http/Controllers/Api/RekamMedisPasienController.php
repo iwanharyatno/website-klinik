@@ -7,6 +7,7 @@ use App\Http\Responses\CommonResponse;
 use App\Models\Pasien;
 use App\Models\RekamMedis;
 use App\Models\User;
+use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
 
@@ -21,10 +22,10 @@ class RekamMedisPasienController extends Controller
             return CommonResponse::forbidden();
         }
         $pasien = Pasien::find($pasienId);
-        $rekamMedisList = $pasien->rekamMedis()->with('pasien')->orderBy('created_at', 'desc')->get();
+        $rekamMedisList = $pasien->rekamMedis()->with('pasien')->orderBy('created_at', 'desc')->orderBy('status', 'asc')->get();
 
         if (request('limit') != null) {
-            $rekamMedisList = $pasien->rekamMedis()->with('pasien')->orderBy('created_at', 'desc')->take(request('limit'))->get();
+            $rekamMedisList = $pasien->rekamMedis()->with('pasien')->orderBy('created_at', 'desc')->orderBy('status', 'asc')->take(request('limit'))->get();
         }
 
         return CommonResponse::ok($rekamMedisList->toArray());
@@ -38,8 +39,7 @@ class RekamMedisPasienController extends Controller
         if (!$request->user()->can('read rekam_medis')) {
             return CommonResponse::forbidden();
         }
-        $rekamMedisList = RekamMedis::with('pasien')->orderBy('created_at', 'desc')->get();
-
+        $rekamMedisList = RekamMedis::with('pasien')->whereDate('created_at', Carbon::today())->orderBy('status', 'asc')->orderBy('no_antrian', 'asc')->get();
         return CommonResponse::ok($rekamMedisList->toArray());
     }
 
@@ -52,8 +52,11 @@ class RekamMedisPasienController extends Controller
             return CommonResponse::forbidden();
         }
 
+        $data = $request->all();
+        $data['no_antrian'] = RekamMedis::whereDate('created_at', Carbon::today())->max('no_antrian') + 1;
+
         $pasien = Pasien::find($pasienId);
-        $rekamMedis = $pasien->rekamMedis()->create($request->all());
+        $rekamMedis = $pasien->rekamMedis()->create($data);
 
         return CommonResponse::created($rekamMedis->toArray());
     }
@@ -121,6 +124,17 @@ class RekamMedisPasienController extends Controller
 
         $rekamMedis = RekamMedis::find($id);
         $rekamMedis->delete();
+
+        return CommonResponse::ok($rekamMedis->toArray());
+    }
+
+    public function changeStatus(Request $request, $id) {
+        if (!$request->user()->can('update rekam_medis')) {
+            return CommonResponse::forbidden();
+        }
+        $rekamMedis = RekamMedis::find($id);
+        $rekamMedis->status = request('status');
+        $rekamMedis->save();
 
         return CommonResponse::ok($rekamMedis->toArray());
     }

@@ -5,6 +5,8 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Http\Responses\CommonResponse;
 use App\Models\Pasien;
+use App\Models\SuratKeteranganDokter;
+use Illuminate\Console\Command;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
 
@@ -40,7 +42,7 @@ class PasienController extends Controller
         ]);
 
         if ($validator->fails()) {
-            return CommonResponse::unprocessableEntity($validator->errors()->all());
+            return CommonResponse::badRequest($validator->errors()->all());
         }
 
         $pasien = Pasien::create($request->all());

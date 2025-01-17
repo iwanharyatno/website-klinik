@@ -5,6 +5,7 @@ use App\Http\Controllers\Api\PasienController;
 use App\Http\Controllers\Api\RegionController;
 use App\Http\Controllers\Api\RekamMedisPasienController;
 use App\Http\Controllers\Api\SatuanObatController;
+use App\Http\Controllers\Api\SKDController;
 use App\Http\Controllers\Api\TipeObatController;
 use App\Http\Controllers\ObatController;
 use App\Http\Controllers\ResepObatController;
@@ -24,7 +25,12 @@ Route::middleware('auth:sanctum')->group(function() {
     Route::post('/logout', [AuthController::class, 'logout']);
     Route::get('/medical-records', [RekamMedisPasienController::class, 'indexAll']);
     Route::get('/medical-records/{recordId}', [RekamMedisPasienController::class, 'showIndependent']);
+    Route::put('/medical-records/{recordId}/change-status', [RekamMedisPasienController::class, 'changeStatus']);
     Route::put('/medical-records/{recordId}/prescriptions/pay', [ResepObatController::class, 'pay']);
+
+    Route::get('/skd/current-numbers', [SKDController::class, 'getCurrentNumbers']);
+    Route::post('/skd', [SKDController::class, 'saveLetter']);
+    Route::get('/skd/detail', [SKDController::class, 'show']);
 
     Route::apiResource('medical-records/{recordId}/prescriptions', ResepObatController::class);
     Route::apiResource('patients', PasienController::class);
