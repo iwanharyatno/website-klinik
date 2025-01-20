@@ -25,6 +25,7 @@ Route::middleware('auth:sanctum')->group(function() {
     Route::post('/logout', [AuthController::class, 'logout']);
     Route::get('/medical-records', [RekamMedisPasienController::class, 'indexAll']);
     Route::get('/medical-records/{recordId}', [RekamMedisPasienController::class, 'showIndependent']);
+    Route::delete('/medical-records/{recordId}', [RekamMedisPasienController::class, 'destroy']);
     Route::put('/medical-records/{recordId}/change-status', [RekamMedisPasienController::class, 'changeStatus']);
     Route::put('/medical-records/{recordId}/prescriptions/pay', [ResepObatController::class, 'pay']);
 

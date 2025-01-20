@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Events\AntrianUpdate;
 use App\Http\Controllers\Controller;
 use App\Http\Responses\CommonResponse;
 use App\Models\Pasien;
@@ -52,8 +53,20 @@ class RekamMedisPasienController extends Controller
             return CommonResponse::forbidden();
         }
 
+        $next = RekamMedis::whereDate('created_at', Carbon::today())->where('status', 'Menunggu')->min('no_antrian');
+        $current = RekamMedis::whereDate('created_at', Carbon::today())->where('status', 'Selesai')->max('no_antrian');
+
         $data = $request->all();
         $data['no_antrian'] = RekamMedis::whereDate('created_at', Carbon::today())->max('no_antrian') + 1;
+
+        if ($current == null) $current = "-";
+
+        if ($next == null) {
+            broadcast(new AntrianUpdate(json_encode([
+                'current' => $current,
+                'next' => $data['no_antrian']
+            ])));
+        }
 
         $pasien = Pasien::find($pasienId);
         $rekamMedis = $pasien->rekamMedis()->create($data);
@@ -116,7 +129,7 @@ class RekamMedisPasienController extends Controller
     /** 
      * Remove the specified resource from storage.
      */
-    public function destroy(Request $request, string $pasienId, string $id)
+    public function destroy(Request $request, string $id)
     {
         if (!$request->user()->can('delete rekam_medis')) {
             return CommonResponse::forbidden();
@@ -132,10 +145,21 @@ class RekamMedisPasienController extends Controller
         if (!$request->user()->can('update rekam_medis')) {
             return CommonResponse::forbidden();
         }
+
         $rekamMedis = RekamMedis::find($id);
         $rekamMedis->status = request('status');
         $rekamMedis->save();
 
+        $next = RekamMedis::whereDate('created_at', Carbon::today())->where('status', 'Menunggu')->min('no_antrian');
+        $current = $rekamMedis->no_antrian;
+
+        if ($next == null) $next = "-";
+
+        broadcast(new AntrianUpdate(json_encode([
+            'current' => $current,
+            'next' => $next
+        ])));
+        
         return CommonResponse::ok($rekamMedis->toArray());
     }
 }
