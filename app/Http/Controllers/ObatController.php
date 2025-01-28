@@ -23,6 +23,16 @@ class ObatController extends Controller
         return CommonResponse::ok($obats->toArray());
     }
 
+    public function indexAvailable(Request $request)
+    {
+        if (!$request->user()->can('read obat')) {
+            return CommonResponse::forbidden();
+        }
+        $obats = Obat::with(['satuanObat', 'tipeObat'])->orderBy('nama_obat', 'asc')->where('stok', '>', 0)->get();
+
+        return CommonResponse::ok($obats->toArray());
+    }
+
     /**
      * Store a newly created resource in storage.
      */

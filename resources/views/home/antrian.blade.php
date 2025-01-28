@@ -21,8 +21,16 @@
                 const data = JSON.parse(e.message);
                 document.getElementById('antrianNext').innerText = data.next;
                 document.getElementById('antrianSekarang').innerText = data.current;
+                callPatient(data.voice);
             });
-        console.log(window.Echo);
     });
+
+    function callPatient(text) {
+        if ('speechSynthesis' in window) {
+            var speech = new SpeechSynthesisUtterance(text);
+            speech.lang = 'id-ID';
+            window.speechSynthesis.speak(speech);
+        }
+    }
 </script>
 @endpush

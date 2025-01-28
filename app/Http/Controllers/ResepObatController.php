@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Http\Responses\CommonResponse;
 use App\Models\DetailResepObat;
+use App\Models\Obat;
 use App\Models\RekamMedis;
 use App\Models\ResepObat;
 use Illuminate\Http\Request;
@@ -60,6 +61,10 @@ class ResepObatController extends Controller
             ]);
         }
 
+        $obat = Obat::find($data['kode_obat']);
+        $obat->stok -= $data['kuantitas'];
+        $obat->save();
+        
         $detailResep = $resepObat->detailResepObats()->create($request->all());
 
         return CommonResponse::created($detailResep->toArray());

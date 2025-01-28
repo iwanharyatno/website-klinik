@@ -13,7 +13,7 @@ return new class extends Migration
     {
         Schema::create('resep_obats', function (Blueprint $table) {
             $table->id('kode');
-            $table->foreignId('kode_rekam_medis')->constrained('rekam_medis', 'kode');
+            $table->foreignId('kode_rekam_medis')->constrained('rekam_medis', 'kode')->onDelete('cascade')->onUpdate('cascade');
             $table->decimal('total', 10, 2);
             $table->decimal('jml_bayar', 10, 2)->nullable();
             $table->enum('status', ['Lunas', 'Belum Lunas'])->default('Belum Lunas');

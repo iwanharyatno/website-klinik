@@ -9,3 +9,7 @@ Broadcast::channel('App.Models.User.{id}', function ($user, $id) {
 Broadcast::channel('antrian', function () {
     return true;
 });
+
+Broadcast::channel('rekam_medis', function() {
+    return true;
+});

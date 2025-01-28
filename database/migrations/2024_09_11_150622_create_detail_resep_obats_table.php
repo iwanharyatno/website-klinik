@@ -13,8 +13,8 @@ return new class extends Migration
     {
         Schema::create('detail_resep_obats', function (Blueprint $table) {
             $table->id('kode');
-            $table->foreignId('kode_resep')->constrained('resep_obats', 'kode');
-            $table->foreignId('kode_obat')->constrained('obats', 'kode');
+            $table->foreignId('kode_resep')->constrained('resep_obats', 'kode')->onDelete('cascade')->onUpdate('cascade');
+            $table->foreignId('kode_obat')->constrained('obats', 'kode')->onDelete('cascade')->onUpdate('cascade');
             $table->decimal('harga', 10, 2);
             $table->integer('kuantitas');
             $table->decimal('total', 10, 2);

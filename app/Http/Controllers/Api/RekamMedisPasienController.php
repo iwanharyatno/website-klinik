@@ -3,6 +3,9 @@
 namespace App\Http\Controllers\Api;
 
 use App\Events\AntrianUpdate;
+use App\Events\RekamMedisDelete;
+use App\Events\RekamMedisInsert;
+use App\Events\RekamMedisUpdate;
 use App\Http\Controllers\Controller;
 use App\Http\Responses\CommonResponse;
 use App\Models\Pasien;
@@ -70,6 +73,9 @@ class RekamMedisPasienController extends Controller
 
         $pasien = Pasien::find($pasienId);
         $rekamMedis = $pasien->rekamMedis()->create($data);
+        $rekamMedis = RekamMedis::with('pasien')->find($rekamMedis->kode);
+
+        broadcast(new RekamMedisInsert(json_encode($rekamMedis->toArray())));
 
         return CommonResponse::created($rekamMedis->toArray());
     }
@@ -135,8 +141,13 @@ class RekamMedisPasienController extends Controller
             return CommonResponse::forbidden();
         }
 
-        $rekamMedis = RekamMedis::find($id);
+        $rekamMedis = RekamMedis::with('pasien')->find($id);
+        if ($rekamMedis == null) {
+            return CommonResponse::notFound();
+        }
         $rekamMedis->delete();
+
+        broadcast(new RekamMedisDelete(json_encode($rekamMedis->toArray())));
 
         return CommonResponse::ok($rekamMedis->toArray());
     }
@@ -157,7 +168,8 @@ class RekamMedisPasienController extends Controller
 
         broadcast(new AntrianUpdate(json_encode([
             'current' => $current,
-            'next' => $next
+            'next' => $next,
+            'voice' => 'Nomor antrian ' . $current . ', atas nama ' . $rekamMedis->pasien->nama_pasien . ', mohon menuju ruang pemeriksaan'
         ])));
         
         return CommonResponse::ok($rekamMedis->toArray());

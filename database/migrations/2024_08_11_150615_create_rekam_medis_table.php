@@ -13,7 +13,7 @@ return new class extends Migration
     {
         Schema::create('rekam_medis', function (Blueprint $table) {
             $table->id('kode');
-            $table->foreignId('no_pasien')->constrained('pasiens', 'no_pasien');
+            $table->foreignId('no_pasien')->constrained('pasiens', 'no_pasien')->onDelete('cascade')->onUpdate('cascade');
             $table->integer('no_antrian')->default(1);
             $table->decimal('tinggi_badan', 5, 2)->nullable();
             $table->decimal('berat_badan', 5, 2)->nullable();

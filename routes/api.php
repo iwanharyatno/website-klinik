@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\PasienController;
+use App\Http\Controllers\Api\PenyakitController;
 use App\Http\Controllers\Api\RegionController;
 use App\Http\Controllers\Api\RekamMedisPasienController;
 use App\Http\Controllers\Api\SatuanObatController;
@@ -10,6 +11,7 @@ use App\Http\Controllers\Api\TipeObatController;
 use App\Http\Controllers\ObatController;
 use App\Http\Controllers\ResepObatController;
 use App\Http\Responses\CommonResponse;
+use App\Models\Obat;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
@@ -37,6 +39,8 @@ Route::middleware('auth:sanctum')->group(function() {
     Route::apiResource('patients', PasienController::class);
     Route::apiResource('patients/{pasienId}/records', RekamMedisPasienController::class);
     Route::apiResource('medicines', ObatController::class);
+    Route::get('/medicines-available', [ObatController::class, 'indexAvailable']);
+    Route::get('/diagnoses', [PenyakitController::class, 'index']);
 
     Route::apiResource('medicine-types', TipeObatController::class);
     Route::apiResource('medicine-units', SatuanObatController::class);
