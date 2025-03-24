@@ -9,6 +9,7 @@ use App\Events\RekamMedisUpdate;
 use App\Http\Controllers\Controller;
 use App\Http\Responses\CommonResponse;
 use App\Models\Pasien;
+use App\Models\Penyakit;
 use App\Models\RekamMedis;
 use App\Models\User;
 use Carbon\Carbon;
@@ -99,7 +100,7 @@ class RekamMedisPasienController extends Controller
         return CommonResponse::ok($rekamMedis->toArray());
     }
 
-    
+
     public function showIndependent(Request $request, string $id)
     {
         if (!$request->user()->can('read rekam_medis')) {
@@ -120,16 +121,27 @@ class RekamMedisPasienController extends Controller
      */
     public function update(Request $request, string $pasienId, string $id)
     {
-        if (!$request->user()->can('update rekam_medis')) {
-            return CommonResponse::forbidden();
+        try {
+            if (!$request->user()->can('update rekam_medis')) {
+                return CommonResponse::forbidden();
+            }
+
+            $pasien = Pasien::find($pasienId);
+            $pasien->rekamMedis()->where('kode', $id)->update($request->all());
+
+            if ($request->diagnosa_akhir) {
+                $existing = Penyakit::where('nama', $request->diagnosa_akhir)->get();
+                if (count($existing) == 0) Penyakit::create(['nama' => $request->diagnosa_akhir, 'kode' => '-', 'harga' => 0]);
+            }
+
+            $rekamMedis = $pasien->rekamMedis()->where('kode', $id)->first();
+
+            return CommonResponse::ok($rekamMedis->toArray());
+        } catch (\Throwable $th) {
+            return CommonResponse::unprocessableEntity([
+                'message' => $th->getMessage()
+            ]);
         }
-
-        $pasien = Pasien::find($pasienId);
-        $pasien->rekamMedis()->where('kode', $id)->update($request->all());
-
-        $rekamMedis = $pasien->rekamMedis()->where('kode', $id)->first();
-
-        return CommonResponse::ok($rekamMedis->toArray());
     }
 
     /** 
@@ -152,7 +164,8 @@ class RekamMedisPasienController extends Controller
         return CommonResponse::ok($rekamMedis->toArray());
     }
 
-    public function changeStatus(Request $request, $id) {
+    public function changeStatus(Request $request, $id)
+    {
         if (!$request->user()->can('update rekam_medis')) {
             return CommonResponse::forbidden();
         }
@@ -171,7 +184,7 @@ class RekamMedisPasienController extends Controller
             'next' => $next,
             'voice' => 'Nomor antrian ' . $current . ', atas nama ' . $rekamMedis->pasien->nama_pasien . ', mohon menuju ruang pemeriksaan'
         ])));
-        
+
         return CommonResponse::ok($rekamMedis->toArray());
     }
 }

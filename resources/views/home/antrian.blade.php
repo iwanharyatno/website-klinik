@@ -15,15 +15,37 @@
 
 @push('scripts')
 <script>
+    let announcementAudio;
+
     window.addEventListener('DOMContentLoaded', function() {
+        // Preload the announcement sound
+        announcementAudio = new Audio('{{ asset("sound/announcement.mp3") }}');
+        announcementAudio.load();
+
         window.Echo.channel('antrian')
             .listen('.update', (e) => {
                 const data = JSON.parse(e.message);
                 document.getElementById('antrianNext').innerText = data.next;
                 document.getElementById('antrianSekarang').innerText = data.current;
-                callPatient(data.voice);
+                if (data.voice) playAnnouncementAndCall(data.voice);
             });
     });
+
+    function playAnnouncementAndCall(text) {
+        if (announcementAudio) {
+            announcementAudio.currentTime = 0;
+            announcementAudio.play().then(() => {
+                announcementAudio.onended = () => {
+                    callPatient(text);
+                };
+            }).catch(error => {
+                console.error('Error playing announcement sound:', error);
+                callPatient(text);
+            });
+        } else {
+            callPatient(text);
+        }
+    }
 
     function callPatient(text) {
         if ('speechSynthesis' in window) {
