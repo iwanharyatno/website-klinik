@@ -146,13 +146,109 @@ class StatsController extends Controller
      */
     public function pendapatanPengeluaran(Request $request)
     {
-        [$startDate, $endDate] = $this->getFilterDates($request);
+        // 1. Ambil Parameter
+        $startDate = $request->query('start_date');
+        $endDate = $request->query('end_date');
+        $periode = $request->query('periode', 'bulanan');
 
-        $data = [
-            'tren_keuangan' => [], // Eloquent: sum(nominal) group by bulan/hari
-        ];
+        // 2. Setup Grouping (TAMBAH LOGIC TAHUNAN)
+        if ($periode == 'harian') {
+            // Key: "2025-01-15"
+            $groupBy = "pembelian_obats.tanggal";
+            $selectRaw = "pembelian_obats.tanggal as waktu";
+            
+            $groupByPendapatan = "DATE(rekam_medis.created_at)";
+            $selectRawPendapatan = "DATE(rekam_medis.created_at) as waktu";
+            
+        } elseif ($periode == 'mingguan') {
+            // Key: "202501" (Tahun 2025, Minggu 01)
+            $groupBy = "YEARWEEK(pembelian_obats.tanggal)";
+            $selectRaw = "YEARWEEK(pembelian_obats.tanggal) as waktu";
+            
+            $groupByPendapatan = "YEARWEEK(rekam_medis.created_at)";
+            $selectRawPendapatan = "YEARWEEK(rekam_medis.created_at) as waktu";
+            
+        } elseif ($periode == 'tahunan') { // <--- FITUR BARU: TAHUNAN
+            // Key: "2025"
+            $groupBy = "YEAR(pembelian_obats.tanggal)";
+            $selectRaw = "YEAR(pembelian_obats.tanggal) as waktu";
+            
+            $groupByPendapatan = "YEAR(rekam_medis.created_at)";
+            $selectRawPendapatan = "YEAR(rekam_medis.created_at) as waktu";
+            
+        } else {
+            // Default: Bulanan. Key: "2025-01"
+            $groupBy = "DATE_FORMAT(pembelian_obats.tanggal, '%Y-%m')";
+            $selectRaw = "DATE_FORMAT(pembelian_obats.tanggal, '%Y-%m') as waktu";
+            
+            $groupByPendapatan = "DATE_FORMAT(rekam_medis.created_at, '%Y-%m')";
+            $selectRawPendapatan = "DATE_FORMAT(rekam_medis.created_at, '%Y-%m') as waktu";
+        }
 
-        return CommonResponse::ok($data, "Statistik keuangan periode $startDate s/d $endDate berhasil diambil");
+        // 3. Query Pengeluaran
+        $queryPengeluaran = \App\Models\PembelianObat::join('detail_pembelian_obats', 'pembelian_obats.no_transaksi', '=', 'detail_pembelian_obats.kode_pembelian')
+            ->selectRaw("$selectRaw, SUM(detail_pembelian_obats.total) as total_biaya")
+            ->groupByRaw($groupBy);
+
+        if ($startDate && $endDate) {
+            $queryPengeluaran->whereBetween('pembelian_obats.tanggal', [$startDate, $endDate]);
+        }
+        $pengeluaran = $queryPengeluaran->pluck('total_biaya', 'waktu')->toArray();
+
+        // 4. Query Pendapatan
+        $queryPendapatan = \App\Models\RekamMedis::join('layanans', 'rekam_medis.kode_layanan', '=', 'layanans.id')
+            ->selectRaw("$selectRawPendapatan, SUM(layanans.harga) as total")
+            ->groupByRaw($groupByPendapatan);
+
+        if ($startDate && $endDate) {
+            $queryPendapatan->whereBetween('rekam_medis.created_at', [$startDate, $endDate]);
+        }
+        $pendapatan = $queryPendapatan->pluck('total', 'waktu')->toArray();
+
+        // 5. Gabungkan & Sort
+        $semuaWaktu = array_unique(array_merge(array_keys($pengeluaran), array_keys($pendapatan)));
+        
+        $semuaWaktu = array_filter($semuaWaktu, function($value) {
+            return !is_null($value) && $value !== '';
+        });
+        
+        sort($semuaWaktu); 
+
+        $trenKeuangan = [];
+
+        foreach ($semuaWaktu as $waktu) {
+            $displayText = $waktu;
+
+            // --- LOGIC PERCANTIK TAMPILAN ---
+            if ($periode == 'mingguan') {
+                $tahun = substr($waktu, 0, 4);
+                $minggu = substr($waktu, 4);
+                $displayText = "Minggu ke-" . intval($minggu) . " (" . $tahun . ")";
+            } 
+            elseif ($periode == 'bulanan') {
+                try {
+                    $displayText = \Carbon\Carbon::createFromFormat('Y-m', $waktu)->format('M Y');
+                } catch (\Exception $e) { $displayText = $waktu; }
+            }
+            elseif ($periode == 'harian') {
+                try {
+                    $displayText = \Carbon\Carbon::parse($waktu)->format('d M Y');
+                } catch (\Exception $e) { $displayText = $waktu; }
+            }
+            // elseif ($periode == 'tahunan') { 
+            //     // Tidak perlu diapa-apakan, karena isinya sudah "2025", "2026", dst.
+            // }
+
+            $trenKeuangan[] = [
+                "bulan" => $displayText, // Key tetap "bulan" agar frontend aman
+                "pendapatan" => (int) ($pendapatan[$waktu] ?? 0),
+                "pengeluaran" => (int) ($pengeluaran[$waktu] ?? 0)
+            ];
+        }
+
+        return CommonResponse::ok([
+            'tren_keuangan' => $trenKeuangan
+        ], "Data berhasil diambil");
     }
 
     /**

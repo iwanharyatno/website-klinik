@@ -11,4 +11,6 @@ class PembelianObat extends Model
     use HasFactory, SoftDeletes;
 
     protected $primaryKey = 'no_transaksi';
+
+    
 }
