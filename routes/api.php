@@ -36,7 +36,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/jenis-tren-penyakit', [StatsController::class, 'jenisTrenPenyakit']);
         Route::get('/pendapatan-pengeluaran', [StatsController::class, 'pendapatanPengeluaran']);
         Route::get('/margin-keuntungan', [StatsController::class, 'marginKeuntungan']);
-        Route::get('/inventory-turnover-rate', [StatsController::class, 'inventoryTurnoverRate']);
+        Route::get('/ketersediaan-obat', [StatsController::class, 'ketersediaanObat']);
     });
 
     Route::get('/medical-records', [RekamMedisPasienController::class, 'indexAll']);

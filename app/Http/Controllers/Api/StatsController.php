@@ -7,6 +7,7 @@ use App\Http\Responses\CommonResponse;
 use App\Models\DetailPembelianObat;
 use App\Models\DetailResepObat;
 use App\Models\Layanan;
+use App\Models\Obat;
 use App\Models\RekamMedis;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -39,8 +40,8 @@ class StatsController extends Controller
         if ($pastTotal == 0) {
             return [
                 'percentage' => $currentTotal > 0 ? 100 : 0,
-                'trend'      => 'up',
-                'text'       => $currentTotal > 0 ? 'Meningkat 100% (Data sebelumnya kosong)' : 'Tidak ada perubahan',
+                'trend' => 'up',
+                'text' => $currentTotal > 0 ? 'Meningkat 100% (Data sebelumnya kosong)' : 'Tidak ada perubahan',
                 'diff_nominal' => $currentTotal
             ];
         }
@@ -48,7 +49,7 @@ class StatsController extends Controller
         // 2. Hitung selisih dan persentase
         $diff = $currentTotal - $pastTotal;
         $percentage = round(($diff / $pastTotal) * 100, 1);
-        
+
         // 3. Tentukan arah tren dan teks
         if ($diff > 0) {
             $trend = 'up';
@@ -63,8 +64,8 @@ class StatsController extends Controller
 
         return [
             'percentage' => abs($percentage),
-            'trend'      => $trend,
-            'text'       => $text,
+            'trend' => $trend,
+            'text' => $text,
             'diff_nominal' => $diff
         ];
     }
@@ -74,110 +75,141 @@ class StatsController extends Controller
      */
     public function kunjunganPasien(Request $request)
     {
-        $hasFilter = $request->has(['start_date', 'end_date']);
-        
-        // Inisialisasi variabel untuk scope cache
-        $startDate = null; $endDate = null;
-        $start = null; $end = null;
-        $prevStartDate = null; $prevEndDate = null;
-        $cacheKey = "";
-        $label = "";
+        [$startCarbon, $endCarbon] = $this->getFilterDates($request);
 
-        if ($hasFilter) {
-            // Bandingkan: Range Tanggal Ini vs Range Tanggal Sebelumnya (Durasi sama)            
-            $startDate = $request->query('start_date');
-            $endDate = $request->query('end_date');
-            
-            $start = $startDate . ' 00:00:00';
-            $end   = $endDate . ' 23:59:59';
+        $start = $startCarbon->copy()->startOfDay();
+        $end = $endCarbon->copy()->endOfDay();
 
-            // Hitung mundur tanggal untuk perbandingan (Insight)
-            $dateDiff = Carbon::parse($startDate)->diffInDays(Carbon::parse($endDate)) + 1;
-            
-            $prevStartDate = Carbon::parse($startDate)->subDays($dateDiff)->toDateString();
-            $prevEndDate   = Carbon::parse($endDate)->subDays($dateDiff)->toDateString();
-            
-            // Key Cache Unik per Tanggal
-            $cacheKey = "stats_kunjungan_{$startDate}_{$endDate}";
-            $label = "Data Periode $startDate s/d $endDate";
+        $grouping = $request->query('periode', 'harian');
 
-        } else {
-            // Bandingkan: Hari Ini (Live) vs Kemarin            
-            // Untuk insight default, kita pakai Today vs Yesterday
-            $today = Carbon::today()->toDateString();
-            $yesterday = Carbon::yesterday()->toDateString();
+        // =====================
+        // FORMAT GROUPING
+        // =====================
+        switch ($grouping) {
+            case 'mingguan':
+                $groupExpr = "YEARWEEK(created_at, 1)";
+                $labelExpr = "CONCAT('Minggu ', WEEK(created_at, 1), ' ', YEAR(created_at))";
+                break;
 
-            $start = $today . ' 00:00:00';
-            $end   = $today . ' 23:59:59';
-            
-            $prevStartDate = $yesterday;
-            $prevEndDate   = $yesterday;
+            case 'bulanan':
+                $groupExpr = "DATE_FORMAT(created_at, '%Y-%m')";
+                $labelExpr = "DATE_FORMAT(created_at, '%Y-%m')";
+                break;
 
-            // Key Cache Statis
-            $cacheKey = "stats_kunjungan_all_time";
-            $label = "Data Seluruh Waktu";
+            case 'tahunan':
+                $groupExpr = "YEAR(created_at)";
+                $labelExpr = "YEAR(created_at)";
+                break;
+
+            default:
+                $groupExpr = "DATE(created_at)";
+                $labelExpr = "DATE(created_at)";
+                $grouping = 'harian';
         }
 
-        // Simpan di Cache selama 1 jam (3600 detik)
-        $data = Cache::remember($cacheKey, 3600, function () use ($hasFilter, $start, $end, $label, $prevStartDate, $prevEndDate) {
-            
-            // A. Query Chart Time Series
-            $timeSeriesQuery = RekamMedis::selectRaw('DATE(created_at) as date, count(*) as total');
-            if ($hasFilter) {
-                $timeSeriesQuery->whereBetween('created_at', [$start, $end]);
-            }
-            $timeSeries = $timeSeriesQuery->groupBy('date')->orderBy('date', 'asc')->get()->toArray();
+        // =====================
+        // A. BASE QUERY (REUSE)
+        // =====================
+        $baseQuery = RekamMedis::query()
+            ->whereBetween('created_at', [$start, $end]);
 
-            // B. Query Chart Wilayah
-            $perWilayahQuery = RekamMedis::query()
-                ->join('pasiens', 'rekam_medis.no_pasien', '=', 'pasiens.no_pasien')
-                ->join('tbl_regions', 'pasiens.kode_kecamatan', '=', 'tbl_regions.region_code')
-                ->selectRaw('tbl_regions.region_name as wilayah, count(*) as total');
-            if ($hasFilter) {
-                $perWilayahQuery->whereBetween('rekam_medis.created_at', [$start, $end]);
-            }
-            $perWilayah = $perWilayahQuery
-                ->groupBy('tbl_regions.region_code', 'tbl_regions.region_name')
-                ->orderByDesc('total')
-                ->get()
-                ->toArray();
+        // =====================
+        // B. TIME SERIES (AGREGASI DB)
+        // =====================
+        $filtered = $baseQuery
+            ->select('created_at');
 
-            // C. Hitung Insight (Total & Perbandingan)
-            
-            // 1. Total Periode Ini
-            if ($hasFilter) {
-                // Jika filter aktif, total diambil dari penjumlahan data chart
-                $currentTotal = array_sum(array_column($timeSeries, 'total'));
-            } else {
-                // Jika all time, currentTotal untuk insight adalah "Hari Ini"
-                $currentTotal = RekamMedis::whereDate('created_at', Carbon::today())->count();
-            }
+        $timeSeries = DB::query()
+            ->fromSub($filtered, 'rm')
+            ->selectRaw("
+        {$groupExpr} AS period,
+        {$labelExpr} AS date,
+        COUNT(*) AS total
+    ")
+            ->groupBy('period', 'date')
+            ->orderBy('period')
+            ->get()
+            ->map(fn($r) => [
+                'date' => $r->date,
+                'total' => (int) $r->total
+            ])
+            ->toArray();
 
-            // 2. Total Periode Lalu (Query Ringan)
-            $pastTotal = RekamMedis::whereBetween('created_at', [
-                    $prevStartDate . ' 00:00:00', 
-                    $prevEndDate . ' 23:59:59'
-                ])->count();
+        // =====================
+        // C. TOTAL PERIODE INI (LANGSUNG DB)
+        // =====================
+        $currentTotal = (clone $baseQuery)->count();
 
-            // 3. Kalkulasi Menggunakan Helper
-            $insightData = $this->calculateInsight($currentTotal, $pastTotal);
+        // =====================
+        // D. PERIODE SEBELUMNYA (COUNT SAJA)
+        // =====================
+        $durationDays = $startCarbon->diffInDays($endCarbon) + 1;
 
-            // Total Keseluruhan (Untuk ditampilkan di Card Utama jika mode All Time)
-            $grandTotal = $hasFilter ? $currentTotal : RekamMedis::count();
+        $prevStart = $startCarbon->copy()->subDays($durationDays)->startOfDay();
+        $prevEnd = $endCarbon->copy()->subDays($durationDays)->endOfDay();
 
-            return [
-                'label'       => $label,
-                'summary'     => [
-                    'total_kunjungan' => $grandTotal,
-                    'insight'         => $insightData
-                ],
-                'time_series' => $timeSeries,
-                'per_wilayah' => $perWilayah
-            ];
-        });
+        $pastTotal = RekamMedis::whereBetween('created_at', [$prevStart, $prevEnd])->count();
 
-        return CommonResponse::ok($data, "Statistik kunjungan pasien berhasil diambil");
+        // =====================
+        // E. INSIGHT UTAMA
+        // =====================
+        $insightData = $this->calculateInsight($currentTotal, $pastTotal);
+
+        // =====================
+        // F. BUSIEST PERIOD (DB, BUKAN PHP SORT)
+        // =====================
+        $busiest = DB::query()
+            ->fromSub($filtered, 'rm')
+            ->selectRaw("
+        {$labelExpr} AS label,
+        COUNT(*) AS total
+    ")
+            ->groupBy('label')
+            ->orderByDesc('total')
+            ->limit(1)
+            ->first();
+
+
+        $insightData['busiest'] = $busiest
+            ? [
+                'label' => $busiest->label,
+                'total' => (int) $busiest->total,
+                'grouping' => $grouping,
+                'text' => ucfirst($grouping)
+                    . " tersibuk terjadi pada {$busiest->label} dengan {$busiest->total} kunjungan"
+            ]
+            : null;
+
+        // =====================
+        // G. PER WILAYAH (TOP 5)
+        // =====================
+        $perWilayah = DB::query()
+            ->fromSub(
+                RekamMedis::query()
+                    ->whereBetween('created_at', [$start, $end])
+                    ->select('no_pasien'),
+                'rm'
+            )
+            ->join('pasiens', 'rm.no_pasien', '=', 'pasiens.no_pasien')
+            ->join('tbl_regions', 'pasiens.kode_kecamatan', '=', 'tbl_regions.region_code')
+            ->selectRaw('tbl_regions.region_name AS wilayah, COUNT(*) AS total')
+            ->groupBy('tbl_regions.region_code', 'tbl_regions.region_name')
+            ->orderByDesc('total')
+            ->limit(5)
+            ->get()
+            ->toArray();
+
+        return CommonResponse::ok([
+            'label' => "Data Periode {$startCarbon->toDateString()} s/d {$endCarbon->toDateString()}",
+            'summary' => [
+                'total_kunjungan' => $currentTotal,
+                'insight' => $insightData,
+            ],
+            'time_series' => $timeSeries,
+            'per_wilayah' => $perWilayah,
+        ]);
     }
+
 
     /**
      * 2. Waktu Tunggu Rata-rata (Bar Chart per Layanan)
@@ -189,7 +221,7 @@ class StatsController extends Controller
         $start = Carbon::parse($startDate);
         $end = Carbon::parse($endDate);
 
-        // Durasi periode (dalam detik)
+        // Durasi periode (detik)
         $durationInSeconds = $start->diffInSeconds($end);
 
         // Periode sebelumnya
@@ -200,11 +232,18 @@ class StatsController extends Controller
         // DATA PER LAYANAN
         // =====================
         $perLayanan = RekamMedis::query()
-            ->select(['jenis_tindakan as layanan', DB::raw('AVG(TIMESTAMPDIFF(MINUTE, created_at, waktu_dilayani)) as avg_minutes')])
-            ->whereNotNull('jenis_tindakan')
-            ->whereNotNull('waktu_dilayani')
-            ->whereBetween('created_at', [$start, $end])
-            ->groupBy('jenis_tindakan')
+            ->join('layanans', 'rekam_medis.kode_layanan', '=', 'layanans.id')
+            ->whereNotNull('rekam_medis.waktu_dilayani')
+            ->whereBetween('rekam_medis.created_at', [$start, $end])
+            ->select([
+                'layanans.nama_layanan as layanan',
+                DB::raw('AVG(TIMESTAMPDIFF(
+                MINUTE,
+                rekam_medis.created_at,
+                rekam_medis.waktu_dilayani
+            )) as avg_minutes')
+            ])
+            ->groupBy('layanans.nama_layanan')
             ->get()
             ->map(function ($item) {
                 return [
@@ -234,7 +273,11 @@ class StatsController extends Controller
         $currentAvg = RekamMedis::query()
             ->whereNotNull('waktu_dilayani')
             ->whereBetween('created_at', [$start, $end])
-            ->select(DB::raw('AVG(TIMESTAMPDIFF(MINUTE, created_at, waktu_dilayani)) as avg'))
+            ->select(DB::raw('AVG(TIMESTAMPDIFF(
+            MINUTE,
+            created_at,
+            waktu_dilayani
+        )) as avg'))
             ->value('avg');
 
         // =====================
@@ -243,7 +286,11 @@ class StatsController extends Controller
         $previousAvg = RekamMedis::query()
             ->whereNotNull('waktu_dilayani')
             ->whereBetween('created_at', [$prevStart, $prevEnd])
-            ->select(DB::raw('AVG(TIMESTAMPDIFF(MINUTE, created_at, waktu_dilayani)) as avg'))
+            ->select(DB::raw('AVG(TIMESTAMPDIFF(
+            MINUTE,
+            created_at,
+            waktu_dilayani
+        )) as avg'))
             ->value('avg');
 
         $currentAvg = $currentAvg ? round($currentAvg) : 0;
@@ -280,14 +327,99 @@ class StatsController extends Controller
      */
     public function jenisTrenPenyakit(Request $request)
     {
-        [$startDate, $endDate] = $this->getFilterDates($request);
+        [$startCarbon, $endCarbon] = $this->getFilterDates($request);
 
-        $data = [
-            'top_10_penyakit' => [], // Eloquent: count penyakit limit 10
-            'top_wilayah_penyakit' => [], // Eloquent: group by wilayah & penyakit
-        ];
+        $start = $startCarbon->copy()->startOfDay();
+        $end = $endCarbon->copy()->endOfDay();
 
-        return CommonResponse::ok($data, "Statistik tren penyakit periode $startDate s/d $endDate berhasil diambil");
+        $grouping = $request->query('periode', 'harian');
+
+        // =====================
+        // FORMAT GROUPING
+        // =====================
+        switch ($grouping) {
+            case 'mingguan':
+                $groupBy = "YEARWEEK(rekam_medis.created_at, 1)";
+                break;
+
+            case 'bulanan':
+                $groupBy = "DATE_FORMAT(rekam_medis.created_at, '%Y-%m')";
+                break;
+
+            case 'tahunan':
+                $groupBy = "YEAR(rekam_medis.created_at)";
+                break;
+
+            default:
+                $groupBy = "DATE(rekam_medis.created_at)";
+                $grouping = 'harian';
+        }
+
+        // =====================
+        // A. TOP 10 PENYAKIT
+        // =====================
+        $top10Penyakit = RekamMedis::query()
+            ->whereBetween('created_at', [$start, $end])
+            ->whereNotNull('diagnosa_akhir')
+            ->selectRaw('diagnosa_akhir AS nama, COUNT(*) AS jumlah')
+            ->groupBy('diagnosa_akhir')
+            ->orderByDesc('jumlah')
+            ->limit(10)
+            ->get()
+            ->map(fn($row) => [
+                'nama' => $row->nama,
+                'jumlah' => (int) $row->jumlah,
+            ])
+            ->toArray();
+
+        // =====================
+        // B. TOP 1 PENYAKIT DI TOP 5 WILAYAH
+        // =====================
+
+        // 1️⃣ Cari TOP 5 wilayah dengan kunjungan tertinggi
+        $topWilayah = RekamMedis::query()
+            ->join('pasiens', 'rekam_medis.no_pasien', '=', 'pasiens.no_pasien')
+            ->join('tbl_regions', 'pasiens.kode_kecamatan', '=', 'tbl_regions.region_code')
+            ->whereBetween('rekam_medis.created_at', [$start, $end])
+            ->selectRaw('tbl_regions.region_code, tbl_regions.region_name, COUNT(*) as total')
+            ->groupBy('tbl_regions.region_code', 'tbl_regions.region_name')
+            ->orderByDesc('total')
+            ->limit(5)
+            ->get();
+
+        $topWilayahPenyakit = [];
+
+        // 2️⃣ Untuk tiap wilayah, ambil penyakit paling dominan
+        $topWilayahPenyakit = [];
+
+        foreach ($topWilayah as $wilayah) {
+            $penyakits = RekamMedis::query()
+                ->join('pasiens', 'rekam_medis.no_pasien', '=', 'pasiens.no_pasien')
+                ->where('pasiens.kode_kecamatan', $wilayah->region_code)
+                ->whereBetween('rekam_medis.created_at', [$start, $end])
+                ->whereNotNull('diagnosa_akhir')
+                ->selectRaw('diagnosa_akhir, COUNT(*) AS jumlah')
+                ->groupBy('diagnosa_akhir')
+                ->orderByDesc('jumlah')
+                ->limit(3)
+                ->get();
+
+            foreach ($penyakits as $penyakit) {
+                $topWilayahPenyakit[] = [
+                    'wilayah' => $wilayah->region_name,
+                    'penyakit' => $penyakit->diagnosa_akhir,
+                    'jumlah' => (int) $penyakit->jumlah,
+                ];
+            }
+        }
+
+        // =====================
+        // RESPONSE
+        // =====================
+        return CommonResponse::ok([
+            'top_10_penyakit' => $top10Penyakit,
+            'top_wilayah_penyakit' => $topWilayahPenyakit,
+        ]);
     }
 
     /**
@@ -295,9 +427,8 @@ class StatsController extends Controller
      */
     public function pendapatanPengeluaran(Request $request)
     {
-        // 1. Ambil Parameter
-        $startDate = $request->query('start_date');
-        $endDate = $request->query('end_date');
+        [$startDate, $endDate] = $this->getFilterDates($request);
+
         $periode = $request->query('periode', 'bulanan');
 
         // 2. Setup Grouping (TAMBAH LOGIC TAHUNAN)
@@ -305,31 +436,31 @@ class StatsController extends Controller
             // Key: "2025-01-15"
             $groupBy = "pembelian_obats.tanggal";
             $selectRaw = "pembelian_obats.tanggal as waktu";
-            
+
             $groupByPendapatan = "DATE(rekam_medis.created_at)";
             $selectRawPendapatan = "DATE(rekam_medis.created_at) as waktu";
-            
+
         } elseif ($periode == 'mingguan') {
             // Key: "202501" (Tahun 2025, Minggu 01)
             $groupBy = "YEARWEEK(pembelian_obats.tanggal)";
             $selectRaw = "YEARWEEK(pembelian_obats.tanggal) as waktu";
-            
+
             $groupByPendapatan = "YEARWEEK(rekam_medis.created_at)";
             $selectRawPendapatan = "YEARWEEK(rekam_medis.created_at) as waktu";
-            
+
         } elseif ($periode == 'tahunan') { // <--- FITUR BARU: TAHUNAN
             // Key: "2025"
             $groupBy = "YEAR(pembelian_obats.tanggal)";
             $selectRaw = "YEAR(pembelian_obats.tanggal) as waktu";
-            
+
             $groupByPendapatan = "YEAR(rekam_medis.created_at)";
             $selectRawPendapatan = "YEAR(rekam_medis.created_at) as waktu";
-            
+
         } else {
             // Default: Bulanan. Key: "2025-01"
             $groupBy = "DATE_FORMAT(pembelian_obats.tanggal, '%Y-%m')";
             $selectRaw = "DATE_FORMAT(pembelian_obats.tanggal, '%Y-%m') as waktu";
-            
+
             $groupByPendapatan = "DATE_FORMAT(rekam_medis.created_at, '%Y-%m')";
             $selectRawPendapatan = "DATE_FORMAT(rekam_medis.created_at, '%Y-%m') as waktu";
         }
@@ -345,7 +476,7 @@ class StatsController extends Controller
         $pengeluaran = $queryPengeluaran->pluck('total_biaya', 'waktu')->toArray();
 
         // 4. Query Pendapatan
-        $queryPendapatan = \App\Models\RekamMedis::join('layanans', 'rekam_medis.kode_layanan', '=', 'layanans.id')
+        $queryPendapatan = RekamMedis::join('layanans', 'rekam_medis.kode_layanan', '=', 'layanans.id')
             ->selectRaw("$selectRawPendapatan, SUM(layanans.harga) as total")
             ->groupByRaw($groupByPendapatan);
 
@@ -356,12 +487,12 @@ class StatsController extends Controller
 
         // 5. Gabungkan & Sort
         $semuaWaktu = array_unique(array_merge(array_keys($pengeluaran), array_keys($pendapatan)));
-        
-        $semuaWaktu = array_filter($semuaWaktu, function($value) {
+
+        $semuaWaktu = array_filter($semuaWaktu, function ($value) {
             return !is_null($value) && $value !== '';
         });
-        
-        sort($semuaWaktu); 
+
+        sort($semuaWaktu);
 
         $trenKeuangan = [];
 
@@ -373,16 +504,18 @@ class StatsController extends Controller
                 $tahun = substr($waktu, 0, 4);
                 $minggu = substr($waktu, 4);
                 $displayText = "Minggu ke-" . intval($minggu) . " (" . $tahun . ")";
-            } 
-            elseif ($periode == 'bulanan') {
+            } elseif ($periode == 'bulanan') {
                 try {
                     $displayText = \Carbon\Carbon::createFromFormat('Y-m', $waktu)->format('M Y');
-                } catch (\Exception $e) { $displayText = $waktu; }
-            }
-            elseif ($periode == 'harian') {
+                } catch (\Exception $e) {
+                    $displayText = $waktu;
+                }
+            } elseif ($periode == 'harian') {
                 try {
                     $displayText = \Carbon\Carbon::parse($waktu)->format('d M Y');
-                } catch (\Exception $e) { $displayText = $waktu; }
+                } catch (\Exception $e) {
+                    $displayText = $waktu;
+                }
             }
             // elseif ($periode == 'tahunan') { 
             //     // Tidak perlu diapa-apakan, karena isinya sudah "2025", "2026", dst.
@@ -397,7 +530,7 @@ class StatsController extends Controller
 
         return CommonResponse::ok([
             'tren_keuangan' => $trenKeuangan
-        ], "Data berhasil diambil");
+        ]);
     }
 
     /**
@@ -405,7 +538,8 @@ class StatsController extends Controller
      */
     public function marginKeuntungan(Request $request)
     {
-        $filter = $request->filter ?? 'bulanan';
+        $filter = $request->query('periode', 'bulanan');
+        $hasDateFilter = $request->has(['start_date', 'end_date']);
 
         // =========================
         // FORMAT GROUPING PERIODE
@@ -425,9 +559,30 @@ class StatsController extends Controller
         }
 
         // =========================
+        // FILTER TANGGAL (OPSIONAL)
+        // =========================
+        $start = null;
+        $end = null;
+
+        if ($hasDateFilter) {
+            [$startCarbon, $endCarbon] = $this->getFilterDates($request);
+            $start = $startCarbon->startOfDay();
+            $end = $endCarbon->endOfDay();
+        }
+
+        $prevStart = null;
+        $prevEnd = null;
+
+        if ($hasDateFilter) {
+            $durationInSeconds = $start->diffInSeconds($end);
+            $prevStart = $start->copy()->subSeconds($durationInSeconds);
+            $prevEnd = $end->copy()->subSeconds($durationInSeconds);
+        }
+
+        // =========================
         // PENGELUARAN (MODAL OBAT)
         // =========================
-        $modalData = DB::table('detail_pembelian_obats')
+        $modalQuery = DB::table('detail_pembelian_obats')
             ->join(
                 'pembelian_obats',
                 'detail_pembelian_obats.kode_pembelian',
@@ -436,10 +591,14 @@ class StatsController extends Controller
             )
             ->selectRaw(
                 str_replace('%s', 'pembelian_obats.tanggal', $groupBy) . ' AS periode,
-                SUM(detail_pembelian_obats.total) AS total'
-            )
-            ->groupBy('periode')
-            ->get();
+            SUM(detail_pembelian_obats.total) AS total'
+            );
+
+        if ($hasDateFilter) {
+            $modalQuery->whereBetween('pembelian_obats.tanggal', [$start, $end]);
+        }
+
+        $modalData = $modalQuery->groupBy('periode')->get();
 
         $totalModal = $modalData->sum('total');
         $jumlahPeriodeModal = $modalData->count();
@@ -447,30 +606,38 @@ class StatsController extends Controller
         // =========================
         // PEMASUKAN OBAT
         // =========================
-        $obatData = DB::table('detail_resep_obats')
+        $obatQuery = DB::table('detail_resep_obats')
             ->selectRaw(
                 str_replace('%s', 'created_at', $groupBy) . ' AS periode,
-                SUM(total) AS total'
-            )
-            ->groupBy('periode')
-            ->get();
+            SUM(total) AS total'
+            );
+
+        if ($hasDateFilter) {
+            $obatQuery->whereBetween('created_at', [$start, $end]);
+        }
+
+        $obatData = $obatQuery->groupBy('periode')->get();
 
         // =========================
         // PEMASUKAN LAYANAN
         // =========================
-        $layananData = DB::table('rekam_medis')
+        $layananQuery = DB::table('rekam_medis')
             ->join(
                 'layanans',
                 'rekam_medis.kode_layanan',
                 '=',
-                'layanans.nama_layanan'
+                'layanans.id'
             )
             ->selectRaw(
                 str_replace('%s', 'rekam_medis.created_at', $groupBy) . ' AS periode,
-                SUM(layanans.harga) AS total'
-            )
-            ->groupBy('periode')
-            ->get();
+            SUM(layanans.harga) AS total'
+            );
+
+        if ($hasDateFilter) {
+            $layananQuery->whereBetween('rekam_medis.created_at', [$start, $end]);
+        }
+
+        $layananData = $layananQuery->groupBy('periode')->get();
 
         // =========================
         // TOTAL PEMASUKAN
@@ -506,8 +673,26 @@ class StatsController extends Controller
         // =========================
         $label = $marginNominal >= 0 ? 'Positif' : 'Negatif';
 
+        $previousMargin = 0;
+
+        if ($hasDateFilter) {
+            $previousMargin = $this->hitungMargin(
+                $groupBy,
+                $prevStart,
+                $prevEnd
+            );
+        }
+
+        $lastDiff = $marginNominal - $previousMargin;
+        $trendText = $lastDiff > 0
+            ? "Margin meningkat sebesar Rp " . number_format($lastDiff)
+            : ($lastDiff < 0
+                ? "Margin menurun sebesar Rp " . number_format(abs($lastDiff))
+                : "Margin tidak berubah dibanding periode sebelumnya");
+
+
         // =========================
-        // RESPONSE
+        // RESPONSE (TIDAK BERUBAH)
         // =========================
         return CommonResponse::ok([
             'filter' => $filter,
@@ -519,16 +704,77 @@ class StatsController extends Controller
             'rata_rata' => [
                 'pendapatan' => (int) $rataPendapatan,
                 'pengeluaran' => (int) $rataPengeluaran
+            ],
+            'insight' => [
+                'perbedaan' => $lastDiff,
+                'text' => $trendText
             ]
-        ], 'Data margin keuntungan berhasil diambil');
+        ]);
+    }
+
+    private function hitungMargin($groupBy, $start = null, $end = null)
+    {
+        // MODAL
+        $modal = DB::table('detail_pembelian_obats')
+            ->join(
+                'pembelian_obats',
+                'detail_pembelian_obats.kode_pembelian',
+                '=',
+                'pembelian_obats.no_transaksi'
+            )
+            ->when(
+                $start && $end,
+                fn($q) =>
+                $q->whereBetween('pembelian_obats.tanggal', [$start, $end])
+            )
+            ->sum('detail_pembelian_obats.total');
+
+        // PEMASUKAN OBAT
+        $pendapatanObat = DB::table('detail_resep_obats')
+            ->when(
+                $start && $end,
+                fn($q) =>
+                $q->whereBetween('created_at', [$start, $end])
+            )
+            ->sum('total');
+
+        // PEMASUKAN LAYANAN
+        $pendapatanLayanan = DB::table('rekam_medis')
+            ->join('layanans', 'rekam_medis.kode_layanan', '=', 'layanans.id')
+            ->when(
+                $start && $end,
+                fn($q) =>
+                $q->whereBetween('rekam_medis.created_at', [$start, $end])
+            )
+            ->sum('layanans.harga');
+
+        $totalPendapatan = $pendapatanObat + $pendapatanLayanan;
+
+        return $totalPendapatan - $modal;
     }
 
     /**
      * 6. Inventory Turnover Rate (Bar Chart per Kategori Obat)
      */
-    public function inventoryTurnoverRate(Request $request)
+    public function ketersediaanObat(Request $request)
     {
-        // TODO: Implement inventory turnover logic
-        return CommonResponse::ok([], "Fitur belum diimplementasikan");
+        $categories = Obat::query()
+            ->join('tipe_obats', 'obats.kode_tipe', '=', 'tipe_obats.kode')
+            ->selectRaw('
+            tipe_obats.nama as kategori,
+            SUM(obats.stok) as stok
+        ')
+            ->groupBy('tipe_obats.kode', 'tipe_obats.nama')
+            ->orderByDesc('stok')
+            ->get()
+            ->map(fn($row) => [
+                'kategori' => $row->kategori,
+                'stok' => (int) $row->stok,
+            ])
+            ->toArray();
+
+        return CommonResponse::ok([
+            'categories' => $categories
+        ]);
     }
 }
