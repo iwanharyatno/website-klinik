@@ -16,7 +16,32 @@
                 <div class="border rounded-md p-4 bg-white">
                     <div class="mb-4">
                         @if ($item->jenis == 'video-mp4')
-                            <video src="{{ asset(\Storage::url($item->isi)) }}" controls></video>
+                            <video src="{{ asset(\Storage::url($item->isi)) }}" controls
+                                class="w-full max-w-lg aspect-video rounded shadow-sm bg-black"></video>
+                        @elseif ($item->jenis == 'video-youtube')
+                            @php
+                                // Extract the 11-character YouTube ID from various URL formats
+                                preg_match(
+                                    '%(?:youtube(?:-nocookie)?\.com/(?:[^/]+/.+/|(?:v|e(?:mbed)?)/|.*[?&]v=)|youtu\.be/)([^"&?/\s]{11})%i',
+                                    $item->isi,
+                                    $match,
+                                );
+                                $ytId = $match[1] ?? $item->isi;
+                            @endphp
+
+                            @if ($ytId)
+                                <iframe class="w-full max-w-lg aspect-video rounded shadow-sm"
+                                    src="https://www.youtube.com/embed/{{ $ytId }}" title="YouTube video preview"
+                                    frameborder="0"
+                                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                                    referrerpolicy="strict-origin-when-cross-origin"
+                                    allowfullscreen>
+                                </iframe>
+                            @else
+                                <div class="p-4 bg-red-100 text-red-700 rounded w-full max-w-lg">
+                                    Invalid YouTube URL provided.
+                                </div>
+                            @endif
                         @endif
                     </div>
                     <x-button tint="bg-success text-white hover:bg-success-dark" type="a"
@@ -68,9 +93,7 @@
                 <form class="flex gap-2 mb-2" action="{{ route('pengaturan.ubah-teks', $item->id) }}" method="POST">
                     @csrf
                     @method('PUT')
-                    <input type="text" name="isi" id="isi"
-                        required
-                        value="{{ $item->isi }}"
+                    <input type="text" name="isi" id="isi" required value="{{ $item->isi }}"
                         class="px-4 py-2 border flex-1 rounded-md block w-full">
                     <x-button tint="bg-success text-white hover:bg-success-dark">
                         <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor"

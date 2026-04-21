@@ -24,7 +24,7 @@
     <form action="{{ route('pengaturan.simpan') }}" id="formTambah" method="POST" class="max-w-lg mx-auto"
         enctype="multipart/form-data">
         @csrf
-        <div class="mb-3 hidden">
+        <div class="mb-3">
             <label for="jenis" class="block mb-2">Jenis</label>
             <select name="jenis" id="jenis" class="px-4 py-2 border rounded-md block w-full">
                 <option value="video-mp4">Video mp4</option>

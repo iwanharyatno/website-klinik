@@ -30,7 +30,8 @@
             <label for="jenis" class="block mb-2">Jenis</label>
             <select name="jenis" id="jenis" class="px-4 py-2 border rounded-md block w-full">
                 <option value="video-mp4" {{ $carousel->jenis == 'video-mp4' ? 'selected' : '' }}>Video mp4</option>
-                <option value="video-youtube" {{ $carousel->jenis == 'video-youtube' ? 'selected' : '' }}>Video Youtube</option>
+                <option value="video-youtube" {{ $carousel->jenis == 'video-youtube' ? 'selected' : '' }}>Video Youtube
+                </option>
             </select>
         </div>
 
@@ -57,7 +58,7 @@
         videoInputElement.setAttribute('type', 'file');
         videoInputElement.setAttribute('accept', 'video/*');
         videoInputElement.setAttribute('class', 'px-4 py-2 border rounded-md block w-full');
-        
+
         videoInputElement.addEventListener('change', function(e) {
             const file = e.target.files[0];
             if (file) {
@@ -74,9 +75,14 @@
             const uploadProgress = document.querySelector('#progressContainer');
             const btnUpdate = document.querySelector('#btnUpdate');
             const formEdit = document.querySelector('#formEdit');
+            const jenis = "{{ $carousel->jenis }}";
 
             document.querySelector('#jenis').addEventListener('change', changeInput);
-            loadExistingContent("{{ $carousel->jenis }}", "{{ asset(\Storage::url($carousel->isi)) }}");
+            if (jenis == 'video-mp4') {
+                loadExistingContent(jenis, "{{ \Storage::url($carousel->isi) }}");
+            } else {
+                loadExistingContent(jenis, "{{ $carousel->isi }}");
+            }
 
             formEdit.addEventListener('submit', function(e) {
                 e.preventDefault();
@@ -90,9 +96,17 @@
             });
         });
 
+        function getYoutubeId(url) {
+            if (!url) return null;
+            const match = url.match(
+                /(?:youtube(?:-nocookie)?\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/i
+            );
+            return match ? match[1] : (url.length === 11 ? url : null);
+        }
+
         function loadExistingContent(jenis, isi) {
             const contentContainer = document.querySelector('#content');
-            contentContainer.innerHTML = `<label for="isi" class="block mb-2">Konten</label>`;
+            contentContainer.innerHTML = `<label for="isi" class="block mb-2 font-medium">Konten</label>`;
 
             if (jenis === 'video-mp4') {
                 contentContainer.appendChild(videoInputElement);
@@ -102,8 +116,44 @@
                     videoInputElementPreview.src = isi;
                     videoInputElementPreview.classList.remove('hidden');
                 }
-            } else {
-                contentContainer.innerHTML += `<input type="text" name="isi" id="isi" class="px-4 py-2 border rounded-md block w-full" placeholder="Tempel tautan video youtube disini" value="${isi}">`;
+            } else if (jenis === 'video-youtube') {
+                const inputHtml =
+                    `<input type="text" name="isi" id="isi" class="px-4 py-2 border rounded-md block w-full mb-4" placeholder="Tempel tautan video youtube disini" value="${isi || ''}">`;
+
+                const previewHtml = `<div id="yt-preview-container" class="w-full max-w-lg aspect-video rounded shadow-sm bg-gray-100 flex items-center justify-center text-gray-500 overflow-hidden mb-4">
+                                <span class="text-sm">Preview video akan muncul di sini</span>
+                             </div>`;
+
+                contentContainer.innerHTML += inputHtml + previewHtml;
+
+                const ytInput = document.getElementById('isi');
+                const previewContainer = document.getElementById('yt-preview-container');
+
+                const updateYtPreview = (url) => {
+                    const ytId = getYoutubeId(url);
+                    if (ytId) {
+                        previewContainer.innerHTML =
+                            `<iframe class="w-full h-full" src="https://www.youtube.com/embed/${ytId}" title="YouTube preview" frameborder="0" 
+                                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                                    referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>`;
+                    } else {
+                        previewContainer.innerHTML = `<span class="text-sm">Format URL YouTube tidak valid</span>`;
+                    }
+                };
+
+                if (isi) {
+                    updateYtPreview(isi);
+                }
+
+                ytInput.addEventListener('input', (e) => {
+                    const currentUrl = e.target.value.trim();
+                    if (currentUrl === '') {
+                        previewContainer.innerHTML =
+                            `<span class="text-sm">Preview video akan muncul di sini</span>`;
+                    } else {
+                        updateYtPreview(currentUrl);
+                    }
+                });
             }
         }
 
