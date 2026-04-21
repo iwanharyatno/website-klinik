@@ -231,126 +231,129 @@
     </script>
 
     <script src="https://www.youtube.com/iframe_api"></script>
-<script>
-    let ytApiReady = false;
-    let videoList, currentMedia;
-    const VIDEO_VOLUME = 0.5; // 0.0 to 1.0
+    <script>
+        let ytApiReady = false;
+        let videoList, currentMedia;
+        const VIDEO_VOLUME = 0.5; // 0.0 to 1.0
 
-    // 1. YouTube API Initialization Callback
-    function onYouTubeIframeAPIReady() {
-        ytApiReady = true;
-        const ytElements = document.querySelectorAll('[data-type="youtube"]');
-        
-        ytElements.forEach(el => {
-            const ytId = el.getAttribute('data-yt-id');
-            const playerDiv = el.querySelector('div');
-            
-            el.ytPlayer = new YT.Player(playerDiv.id, {
-                videoId: ytId,
-                playerVars: {
-                    'autoplay': 0,
-                    'controls': 0, // Hide controls for a clean queue screen
-                    'disablekb': 1,
-                    'modestbranding': 1,
-                    'rel': 0
-                },
-                events: {
-                    'onStateChange': function(event) {
-                        // When YouTube video ends (State 0), play next
-                        if (event.data === YT.PlayerState.ENDED) {
-                            playNext();
+        // 1. YouTube API Initialization Callback
+        function onYouTubeIframeAPIReady() {
+            ytApiReady = true;
+            const ytElements = document.querySelectorAll('[data-type="youtube"]');
+
+            ytElements.forEach(el => {
+                const ytId = el.getAttribute('data-yt-id');
+                const playerDiv = el.querySelector('div');
+
+                el.ytPlayer = new YT.Player(playerDiv.id, {
+                    videoId: ytId,
+                    playerVars: {
+                        'autoplay': 0,
+                        'controls': 0, // Hide controls for a clean queue screen
+                        'disablekb': 1,
+                        'modestbranding': 1,
+                        'rel': 0
+                    },
+                    events: {
+                        'onStateChange': function(event) {
+                            // When YouTube video ends (State 0), play next
+                            if (event.data === YT.PlayerState.ENDED) {
+                                playNext();
+                            }
                         }
+                    }
+                });
+            });
+        }
+
+        // 2. Helper functions to handle both media types seamlessly
+        function playMedia(el) {
+            if (el.getAttribute('data-type') === 'mp4') {
+                el.volume = VIDEO_VOLUME;
+                el.play();
+            } else if (el.getAttribute('data-type') === 'youtube' && el.ytPlayer && typeof el.ytPlayer.playVideo ===
+                'function') {
+                el.ytPlayer.setVolume(VIDEO_VOLUME * 100); // YT uses 0-100 scale
+                el.ytPlayer.playVideo();
+            }
+        }
+
+        function pauseMedia(el) {
+            if (el.getAttribute('data-type') === 'mp4') {
+                el.pause();
+            } else if (el.getAttribute('data-type') === 'youtube' && el.ytPlayer) {
+                el.ytPlayer.pauseVideo();
+            }
+        }
+
+        function isMediaPaused(el) {
+            if (el.getAttribute('data-type') === 'mp4') {
+                return el.paused;
+            } else if (el.getAttribute('data-type') === 'youtube' && el.ytPlayer && typeof el.ytPlayer.getPlayerState ===
+                'function') {
+                // YT.PlayerState.PLAYING is 1
+                return el.ytPlayer.getPlayerState() !== 1;
+            }
+            return true;
+        }
+
+        // 3. Main Logic
+        document.addEventListener('DOMContentLoaded', function() {
+            videoList = document.querySelector('#videoContainer');
+
+            // Attach 'ended' listeners to all local MP4s
+            document.querySelectorAll('[data-type="mp4"]').forEach(mp4 => {
+                mp4.addEventListener('ended', playNext);
+            });
+
+            document.addEventListener('click', function(event) {
+                if (!document.webkitIsFullScreen) {
+                    document.documentElement.requestFullscreen().catch(err => console.log(
+                        "Fullscreen ignored"));
+                }
+
+                if (!currentMedia) {
+                    currentMedia = videoList.children[0];
+                    playMedia(currentMedia);
+                } else {
+                    if (isMediaPaused(currentMedia)) {
+                        playMedia(currentMedia);
+                    } else {
+                        pauseMedia(currentMedia);
                     }
                 }
             });
         });
-    }
 
-    // 2. Helper functions to handle both media types seamlessly
-    function playMedia(el) {
-        if (el.getAttribute('data-type') === 'mp4') {
-            el.volume = VIDEO_VOLUME;
-            el.play();
-        } else if (el.getAttribute('data-type') === 'youtube' && el.ytPlayer && typeof el.ytPlayer.playVideo === 'function') {
-            el.ytPlayer.setVolume(VIDEO_VOLUME * 100); // YT uses 0-100 scale
-            el.ytPlayer.playVideo();
-        }
-    }
+        const playNext = function() {
+            let nextMedia = currentMedia.nextElementSibling;
 
-    function pauseMedia(el) {
-        if (el.getAttribute('data-type') === 'mp4') {
-            el.pause();
-        } else if (el.getAttribute('data-type') === 'youtube' && el.ytPlayer) {
-            el.ytPlayer.pauseVideo();
-        }
-    }
-
-    function isMediaPaused(el) {
-        if (el.getAttribute('data-type') === 'mp4') {
-            return el.paused;
-        } else if (el.getAttribute('data-type') === 'youtube' && el.ytPlayer && typeof el.ytPlayer.getPlayerState === 'function') {
-            // YT.PlayerState.PLAYING is 1
-            return el.ytPlayer.getPlayerState() !== 1; 
-        }
-        return true;
-    }
-
-    // 3. Main Logic
-    document.addEventListener('DOMContentLoaded', function() {
-        videoList = document.querySelector('#videoContainer');
-        
-        // Attach 'ended' listeners to all local MP4s
-        document.querySelectorAll('[data-type="mp4"]').forEach(mp4 => {
-            mp4.addEventListener('ended', playNext);
-        });
-
-        document.addEventListener('click', function(event) {
-            if (!document.webkitIsFullScreen) {
-                document.documentElement.requestFullscreen().catch(err => console.log("Fullscreen ignored"));
+            if (!nextMedia) {
+                nextMedia = videoList.children[0]; // Loop back to start
             }
 
-            if (!currentMedia) {
-                currentMedia = videoList.children[0];
-                playMedia(currentMedia);
-            } else {
-                if (isMediaPaused(currentMedia)) {
-                    playMedia(currentMedia);
-                } else {
-                    pauseMedia(currentMedia);
+            nextMedia.classList.add('animate-fade-in');
+            currentMedia.classList.add('animate-fade-out');
+
+            nextMedia.style.zIndex = '1';
+
+            playMedia(nextMedia);
+
+            setTimeout(function() {
+                nextMedia.classList.remove('animate-fade-in');
+                currentMedia.classList.remove('animate-fade-out');
+                currentMedia.style.zIndex = '-1';
+
+                // Reset the previous video to the beginning
+                if (currentMedia.getAttribute('data-type') === 'mp4') {
+                    currentMedia.currentTime = 0;
+                } else if (currentMedia.getAttribute('data-type') === 'youtube' && currentMedia.ytPlayer) {
+                    currentMedia.ytPlayer.seekTo(0);
+                    currentMedia.ytPlayer.pauseVideo();
                 }
-            }
-        });
-    });
 
-    const playNext = function() {
-        let nextMedia = currentMedia.nextElementSibling;
-
-        if (!nextMedia) {
-            nextMedia = videoList.children[0]; // Loop back to start
-        }
-
-        nextMedia.classList.add('animate-fade-in');
-        currentMedia.classList.add('animate-fade-out');
-
-        nextMedia.style.zIndex = '1';
-        
-        playMedia(nextMedia);
-
-        setTimeout(function() {
-            nextMedia.classList.remove('animate-fade-in');
-            currentMedia.classList.remove('animate-fade-out');
-            currentMedia.style.zIndex = '-1';
-
-            // Reset the previous video to the beginning
-            if (currentMedia.getAttribute('data-type') === 'mp4') {
-                currentMedia.currentTime = 0;
-            } else if (currentMedia.getAttribute('data-type') === 'youtube' && currentMedia.ytPlayer) {
-                currentMedia.ytPlayer.seekTo(0);
-                currentMedia.ytPlayer.pauseVideo();
-            }
-
-            currentMedia = nextMedia;
-        }, 1000);
-    };
-</script>
+                currentMedia = nextMedia;
+            }, 1000);
+        };
+    </script>
 @endpush
