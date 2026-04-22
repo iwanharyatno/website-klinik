@@ -39,7 +39,7 @@
             </div>
         </header>
         <main class="flex items-center justify-center min-h-[80vh] gap-4">
-            <div class="min-h-[70vh] w-1/4 ml-4">
+            <div class="min-h-[70vh] w-1/4 ml-12">
                 <h2
                     class="text-5xl font-bold uppercase text-center p-2 bg-gradient-to-r from-blue-200 to-blue-500 rounded-full mb-8">
                     Antrian</h2>
