@@ -8,13 +8,11 @@ use App\Models\Pasien;
 use App\Models\SuratKeteranganDokter;
 use Illuminate\Console\Command;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
 
 class PasienController extends Controller
 {
-    /**
-     * Display a listing of the resource.
-     */
     public function index(Request $request)
     {
         if (!$request->user()->can('read pasien')) {
@@ -24,6 +22,87 @@ class PasienController extends Controller
         $pasienList = Pasien::orderBy('nama_pasien')->get();
 
         return CommonResponse::ok($pasienList->toArray());
+    }
+
+    /**
+     * Display a listing of the resource with specific search modes.
+     */
+    public function indexSearch(Request $request)
+    {
+        // 1. Authorization check
+        if (!$request->user()->can('read pasien')) {
+            return CommonResponse::forbidden();
+        }
+
+        $mode = $request->query('mode'); // 'no_pasien', 'nama', or 'alamat'
+        $keyword = $request->query('keyword');
+
+        // Start with a clean query and specific selection
+        $query = Pasien::query()->select('pasiens.*');
+
+        if ($keyword) {
+            $query->where(function ($q) use ($mode, $keyword) {
+                switch ($mode) {
+                    case 'no_pasien':
+                        // Direct/Exact match for ID
+                        $q->where('no_pasien', $keyword);
+                        break;
+
+                    case 'nama':
+                        // Partial match for Name
+                        $q->where('nama_pasien', 'like', "%{$keyword}%");
+                        break;
+
+                    case 'alamat':
+                        // Complex Alamat Logic
+                        $this->applyAlamatSearch($q, $keyword);
+                        break;
+
+                    default:
+                        // Fallback: search all if no mode is specified
+                        $q->where('no_pasien', 'like', "%{$keyword}%")
+                            ->orWhere('nama_pasien', 'like', "%{$keyword}%");
+                        $this->applyAlamatSearch($q, $keyword, true);
+                        break;
+                }
+            });
+        }
+
+        // 2. Optimization: Eager load if needed, but for 12k+ keep it lean
+        // 3. Mandatory Pagination
+        $pasienList = $query->orderBy('nama_pasien')
+            ->paginate($request->query('per_page', 15));
+
+        return CommonResponse::ok($pasienList);
+    }
+
+    /**
+     * Helper function to handle the complex address search logic
+     */
+    private function applyAlamatSearch($query, $keyword, $isOr = false)
+    {
+        $method = $isOr ? 'orWhere' : 'where';
+
+        $query->$method(function ($q) use ($keyword) {
+            // Search local text fields
+            $q->where('alamat', 'like', "%{$keyword}%")
+                ->orWhere('propinsi', 'like', "%{$keyword}%")
+                ->orWhere('kabupaten', 'like', "%{$keyword}%")
+                ->orWhere('kecamatan', 'like', "%{$keyword}%")
+                ->orWhere('kelurahan', 'like', "%{$keyword}%");
+
+            // Lookup Region Codes in tbl_regions
+            $matchingRegionCodes = DB::table('tbl_regions')
+                ->where('region_name', 'like', "%{$keyword}%")
+                ->pluck('region_code');
+
+            if ($matchingRegionCodes->isNotEmpty()) {
+                $q->orWhereIn('kode_propinsi', $matchingRegionCodes)
+                    ->orWhereIn('kode_kabupaten', $matchingRegionCodes)
+                    ->orWhereIn('kode_kecamatan', $matchingRegionCodes)
+                    ->orWhereIn('kode_kelurahan', $matchingRegionCodes);
+            }
+        });
     }
 
     /**

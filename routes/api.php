@@ -49,6 +49,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/skd', [SKDController::class, 'saveLetter']);
     Route::get('/skd/detail', [SKDController::class, 'show']);
 
+    Route::get('patients-search', [PasienController::class, 'indexSearch']);
     Route::apiResource('medical-records/{recordId}/prescriptions', ResepObatController::class);
     Route::apiResource('patients', PasienController::class);
     Route::apiResource('patients/{pasienId}/records', RekamMedisPasienController::class);
